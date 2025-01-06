@@ -1,13 +1,13 @@
 import retry from 'async-retry'
 
 import { launchBrowser } from './lib/playwright'
-import { scrapNipponPaintColors } from './lib/scrapper'
+import { scrapDuluxColors } from './lib/scrapper'
 
 const main = async () => {
 	console.log('🟡 Connecting to Scrapaint...')
 	const { browser, context, page } = await launchBrowser()
 
-	await scrapNipponPaintColors(page)
+	await scrapDuluxColors(page)
 
 	console.log('🔴 Disconnecting to Scrapaint...')
 	await context.close()

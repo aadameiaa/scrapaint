@@ -1,6 +1,11 @@
 import { Locator, Page } from 'playwright'
 
-import { JOTUN_URL, NIPPON_PAINT_URL, SCROLL_TIMEOUT } from './constants'
+import {
+	DULUX_URL,
+	JOTUN_URL,
+	NIPPON_PAINT_URL,
+	SCROLL_TIMEOUT,
+} from './constants'
 import { writeJSONFile } from './file'
 import { getUniqueColors } from './helpers'
 import { ColorData } from './types'
@@ -131,6 +136,53 @@ async function parseJotunCardLocatorToColorData(
 			)
 			.evaluate((element) => window.getComputedStyle(element).backgroundColor)
 	)
+
+	return { name, code, hexCode }
+}
+
+export async function scrapDuluxColors(page: Page) {
+	try {
+		console.log('🟢 Connected to Dulux website...')
+		await page.goto(DULUX_URL)
+
+		console.log('🪛 Scrapping website content...')
+		await page.getByRole('button', { name: 'Accept All Cookies' }).click()
+
+		const colors: ColorData[] = []
+		const buttonLocators = await page
+			.locator('button[class^="a20-color-box"]')
+			.all()
+		for (const buttonLocator of buttonLocators) {
+			await buttonLocator.click()
+
+			const colorsInPage: ColorData[] = []
+			const cardLocators = await page
+				.locator('div[class^="item"] > div[class^="m7-color-card"]')
+				.all()
+			for (const cardLocator of cardLocators) {
+				const color = await parseDuluxCardLocatorToColorData(cardLocator)
+
+				colorsInPage.push(color)
+			}
+
+			colors.push(...colorsInPage)
+		}
+
+		console.log('📄 Write website content into file...')
+		writeJSONFile(getUniqueColors(colors), 'dulux-colors.json')
+	} catch (error) {
+		console.log('🔴 Something bad happen:', error)
+
+		throw error
+	}
+}
+
+async function parseDuluxCardLocatorToColorData(
+	cardLocator: Locator
+): Promise<ColorData> {
+	const hexCode = (await cardLocator.getAttribute('data-hex')) as string
+	const name = (await cardLocator.getAttribute('data-label')) as string
+	const code = (await cardLocator.getAttribute('data-ccid')) as string
 
 	return { name, code, hexCode }
 }
