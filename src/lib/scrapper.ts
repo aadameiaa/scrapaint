@@ -1,4 +1,4 @@
-import { Page } from 'playwright'
+import { Locator, Page } from 'playwright'
 
 import { JOTUN_URL, NIPPON_PAINT_URL, SCROLL_TIMEOUT } from './constants'
 import { writeJSONFile } from './file'
@@ -7,77 +7,97 @@ import { ColorData } from './types'
 import { backgroundColorStyleToHexCode } from './utils'
 
 export async function scrapNipponPaintColors(page: Page) {
-	await page.goto(NIPPON_PAINT_URL)
+	try {
+		console.log('🟢 Connected to Nippon Paint website...')
+		await page.goto(NIPPON_PAINT_URL)
 
-	const pageIds = await page.evaluate<string[], string>((url) => {
-		const links = document.querySelectorAll(
-			'.colour-family > div > ul > li > a'
-		)
+		console.log('🪛 Scrapping website content...')
+		const colors: ColorData[] = []
+		const anchorLocators = await page
+			.locator('.colour-family > div > ul > li > a')
+			.all()
+		for (const anchorLocator of anchorLocators) {
+			const pageId = (
+				(await anchorLocator.getAttribute('href')) as string
+			).replace(NIPPON_PAINT_URL, '')
 
-		return Array.from(links).map((link) =>
-			(link.getAttribute('href') as string).replace(url, '')
-		)
-	}, NIPPON_PAINT_URL)
+			await page.goto(`${NIPPON_PAINT_URL}${pageId}`)
 
-	const colors: ColorData[] = []
-	for (const pageId of pageIds) {
-		await page.goto(`${NIPPON_PAINT_URL}${pageId}`)
+			const colorsInPage: ColorData[] = []
+			const cardLocators = await page.locator('.card').all()
+			for (const cardLocator of cardLocators) {
+				const color = await parseNipponPaintCardLocatorToColorData(cardLocator)
 
-		const colorsInPage = await page.evaluate<ColorData[]>(() => {
-			function parseDOMToNipponPaintColorDataList(): ColorData[] {
-				const cards = document.querySelectorAll('.card')
-
-				return Array.from(cards).map((card) =>
-					parseDOMToSingleNipponPaintColorData(card)
-				)
+				colorsInPage.push(color)
 			}
 
-			function parseDOMToSingleNipponPaintColorData(
-				element: Element
-			): ColorData {
-				const image = element.querySelector(
-					'.card-image > .overlay-image > img'
-				) as Element
-				const body = element.querySelector('.card-body') as Element
+			colors.push(...colorsInPage)
+		}
 
-				const hexCode =
-					'#' + image.className.split(' ')[1].replace('ci_', '').toUpperCase()
-				const name = (
-					(body.querySelector('.card-title > a') as Element)
-						.textContent as string
-				).trim()
-				const code = (
-					(body.querySelector('p:nth-child(3)') as Element)
-						.textContent as string
-				).trim()
+		console.log('📄 Write website content into file...')
+		writeJSONFile(getUniqueColors(colors), 'nippon-paint-colors.json')
+	} catch (error) {
+		console.log('🔴 Something bad happen:', error)
 
-				return {
-					name,
-					code,
-					hexCode,
-				}
-			}
-
-			return parseDOMToNipponPaintColorDataList()
-		})
-
-		colors.push(...colorsInPage)
+		throw error
 	}
+}
 
-	writeJSONFile(getUniqueColors(colors), 'nippon-paint-colors.json')
+async function parseNipponPaintCardLocatorToColorData(
+	cardLocator: Locator
+): Promise<ColorData> {
+	const hexCode =
+		'#' +
+		(
+			(await cardLocator
+				.locator('.card-image > .overlay-image > img')
+				.getAttribute('class')) as string
+		).split('ci_')[1]
+	const [name, code] = (
+		(await cardLocator.locator('.card-body').allInnerTexts()) as string[]
+	)[0].split('\n\n')
+
+	return { name, code, hexCode }
 }
 
 export async function scrapJotunColors(page: Page) {
-	await page.goto(JOTUN_URL)
+	try {
+		console.log('🟢 Connected to Jotun website...')
+		await page.goto(JOTUN_URL)
 
-	await page.getByRole('button', { name: 'Accept All Cookies' }).click()
-	await page.getByRole('button', { name: 'Hapus filter' }).click()
-	await page.waitForFunction(() => {
-		const url = new URL(window.location.href)
+		console.log('🪛 Scrapping website content...')
+		await page.getByRole('button', { name: 'Accept All Cookies' }).click()
+		await page.getByRole('button', { name: 'Hapus filter' }).click()
+		await page.waitForFunction(() => {
+			const url = new URL(window.location.href)
 
-		return !url.searchParams.has('collections')
-	})
+			return !url.searchParams.has('collections')
+		})
 
+		await infiniteJotunScroll(page)
+
+		const colors: ColorData[] = []
+		const cardLocators = await page
+			.locator(
+				'div[class="tw-h-full tw-col-span-6 md:tw-col-span-4 xl:tw-col-span-2"]'
+			)
+			.all()
+		for (const cardLocator of cardLocators) {
+			const color = await parseJotunCardLocatorToColorData(cardLocator)
+
+			colors.push(color)
+		}
+
+		console.log('📄 Write website content into file...')
+		writeJSONFile(getUniqueColors(colors), 'jotun-colors.json')
+	} catch (error) {
+		console.log('🔴 Something bad happen:', error)
+
+		throw error
+	}
+}
+
+async function infiniteJotunScroll(page: Page) {
 	while (true) {
 		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
 		await page.waitForTimeout(SCROLL_TIMEOUT)
@@ -94,28 +114,23 @@ export async function scrapJotunColors(page: Page) {
 			break
 		}
 	}
+}
 
-	const cards = await page
-		.locator(
-			'div[class="tw-h-full tw-col-span-6 md:tw-col-span-4 xl:tw-col-span-2"]'
-		)
-		.all()
-
-	const colors: ColorData[] = []
-	for (const card of cards) {
-		const texts = await card
+async function parseJotunCardLocatorToColorData(
+	cardLocator: Locator
+): Promise<ColorData> {
+	const [code, name] = (
+		(await cardLocator
 			.locator('a[href^="/id-id/decorative/interior/colours/"]')
-			.allInnerTexts()
-		const backgroundColor = await card
+			.allInnerTexts()) as string[]
+	)[0].split('\n')
+	const hexCode = backgroundColorStyleToHexCode(
+		await cardLocator
 			.locator(
 				'a[href^="/id-id/decorative/interior/colours/"] > div:nth-of-type(1) > div:nth-of-type(1)'
 			)
 			.evaluate((element) => window.getComputedStyle(element).backgroundColor)
-		const [code, name] = texts[0].split('\n')
-		const hexCode = backgroundColorStyleToHexCode(backgroundColor)
+	)
 
-		colors.push({ name, code, hexCode })
-	}
-
-	writeJSONFile(getUniqueColors(colors), 'jotun-colors.json')
+	return { name, code, hexCode }
 }

@@ -1,5 +1,5 @@
 export const DEFAULT_TIMEOUT = 60_000
-export const SCROLL_TIMEOUT = 1_000
+export const SCROLL_TIMEOUT = 3_000
 
 export const NIPPON_PAINT_URL =
 	'https://nipponpaint.com.sg/colours/find-your-colour/'
