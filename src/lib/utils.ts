@@ -1,3 +1,7 @@
-export async function delay(duration: number) {
-	return new Promise((resolve) => setTimeout(resolve, duration))
+export function backgroundColorStyleToHexCode(backgroundColor: string): string {
+	return backgroundColor
+		.replace('rgb(', '')
+		.replace(')', '')
+		.split(', ')
+		.reduce((hex, value) => hex + Number(value).toString(16).toUpperCase(), '#')
 }

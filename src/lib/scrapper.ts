@@ -1,9 +1,10 @@
 import { Page } from 'playwright'
 
-import { NIPPON_PAINT_URL } from './constants'
+import { JOTUN_URL, NIPPON_PAINT_URL, SCROLL_TIMEOUT } from './constants'
 import { writeJSONFile } from './file'
 import { getUniqueColors } from './helpers'
 import { ColorData } from './types'
+import { backgroundColorStyleToHexCode } from './utils'
 
 export async function scrapNipponPaintColors(page: Page) {
 	await page.goto(NIPPON_PAINT_URL)
@@ -63,7 +64,58 @@ export async function scrapNipponPaintColors(page: Page) {
 		colors.push(...colorsInPage)
 	}
 
-	const uniqueColors = getUniqueColors(colors)
+	writeJSONFile(getUniqueColors(colors), 'nippon-paint-colors.json')
+}
 
-	writeJSONFile(uniqueColors, 'nippon-paint-colors.json')
+export async function scrapJotunColors(page: Page) {
+	await page.goto(JOTUN_URL)
+
+	await page.getByRole('button', { name: 'Accept All Cookies' }).click()
+	await page.getByRole('button', { name: 'Hapus filter' }).click()
+	await page.waitForFunction(() => {
+		const url = new URL(window.location.href)
+
+		return !url.searchParams.has('collections')
+	})
+
+	while (true) {
+		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+		await page.waitForTimeout(SCROLL_TIMEOUT)
+
+		const totalColorsLabel = (await page
+			.getByText(/Menampilkan .* dari .* warna/)
+			.textContent()) as string
+		const [currentTotalColors, availableTotalColors] = totalColorsLabel
+			.replace('Menampilkan ', '')
+			.replace(' warna', '')
+			.split(' dari ')
+
+		if (currentTotalColors === availableTotalColors) {
+			break
+		}
+	}
+
+	const cards = await page
+		.locator(
+			'div[class="tw-h-full tw-col-span-6 md:tw-col-span-4 xl:tw-col-span-2"]'
+		)
+		.all()
+
+	const colors: ColorData[] = []
+	for (const card of cards) {
+		const texts = await card
+			.locator('a[href^="/id-id/decorative/interior/colours/"]')
+			.allInnerTexts()
+		const backgroundColor = await card
+			.locator(
+				'a[href^="/id-id/decorative/interior/colours/"] > div:nth-of-type(1) > div:nth-of-type(1)'
+			)
+			.evaluate((element) => window.getComputedStyle(element).backgroundColor)
+		const [code, name] = texts[0].split('\n')
+		const hexCode = backgroundColorStyleToHexCode(backgroundColor)
+
+		colors.push({ name, code, hexCode })
+	}
+
+	writeJSONFile(getUniqueColors(colors), 'jotun-colors.json')
 }
