@@ -1,10 +1,12 @@
 import { Locator, Page } from 'playwright'
 
 import {
+	ASIAN_PAINTS_SCROLL_TIMEOUT,
+	ASIAN_PAINTS_URL,
 	DULUX_URL,
+	JOTUN_SCROLL_TIMEOUT,
 	JOTUN_URL,
 	NIPPON_PAINT_URL,
-	SCROLL_TIMEOUT,
 } from './constants'
 import { writeJSONFile } from './file'
 import { getUniqueColors } from './helpers'
@@ -13,7 +15,7 @@ import { backgroundColorStyleToHexCode } from './utils'
 
 export async function scrapNipponPaintColors(page: Page) {
 	try {
-		console.log('🟢 Connected to Nippon Paint website...')
+		console.log('🤝 Connected to Nippon Paint website...')
 		await page.goto(NIPPON_PAINT_URL)
 
 		console.log('🪛 Scrapping website content...')
@@ -67,7 +69,7 @@ async function parseNipponPaintCardLocatorToColorData(
 
 export async function scrapJotunColors(page: Page) {
 	try {
-		console.log('🟢 Connected to Jotun website...')
+		console.log('🤝 Connected to Jotun website...')
 		await page.goto(JOTUN_URL)
 
 		console.log('🪛 Scrapping website content...')
@@ -105,7 +107,7 @@ export async function scrapJotunColors(page: Page) {
 async function infiniteJotunScroll(page: Page) {
 	while (true) {
 		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-		await page.waitForTimeout(SCROLL_TIMEOUT)
+		await page.waitForTimeout(JOTUN_SCROLL_TIMEOUT)
 
 		const totalColorsLabel = (await page
 			.getByText(/Menampilkan .* dari .* warna/)
@@ -142,7 +144,7 @@ async function parseJotunCardLocatorToColorData(
 
 export async function scrapDuluxColors(page: Page) {
 	try {
-		console.log('🟢 Connected to Dulux website...')
+		console.log('🤝 Connected to Dulux website...')
 		await page.goto(DULUX_URL)
 
 		console.log('🪛 Scrapping website content...')
@@ -183,6 +185,56 @@ async function parseDuluxCardLocatorToColorData(
 	const hexCode = (await cardLocator.getAttribute('data-hex')) as string
 	const name = (await cardLocator.getAttribute('data-label')) as string
 	const code = (await cardLocator.getAttribute('data-ccid')) as string
+
+	return { name, code, hexCode }
+}
+
+export async function scrapAsianPaintsColors(page: Page) {
+	try {
+		console.log('🤝 Connected to Dulux website...')
+		await page.goto(ASIAN_PAINTS_URL)
+
+		console.log('🪛 Scrapping website content...')
+		await infiniteAsianPaintsColors(page)
+
+		const colors: ColorData[] = []
+		const cardLocators = await page
+			.locator('li[class*="cardList"] > a[class*="cardWp"]')
+			.all()
+
+		for (const cardLocator of cardLocators) {
+			const color = await parseAsianPaintsCardLocatorToColorData(cardLocator)
+
+			colors.push(color)
+		}
+
+		console.log('📄 Write website content into file...')
+		writeJSONFile(getUniqueColors(colors), 'asian-paints-colors.json')
+	} catch (error) {
+		console.log('🔴 Something bad happen:', error)
+
+		throw error
+	}
+}
+
+async function infiniteAsianPaintsColors(page: Page) {
+	const loadMoreButtonLocator = page.locator('button[class*="loadMoreBtn"]')
+	do {
+		await loadMoreButtonLocator.scrollIntoViewIfNeeded()
+		await loadMoreButtonLocator.click()
+		await page.waitForTimeout(ASIAN_PAINTS_SCROLL_TIMEOUT)
+	} while (await loadMoreButtonLocator.isVisible())
+}
+
+async function parseAsianPaintsCardLocatorToColorData(
+	cardLocator: Locator
+): Promise<ColorData> {
+	const hexCode = backgroundColorStyleToHexCode(
+		await cardLocator
+			.locator('div[class*="card"]')
+			.evaluate((element) => window.getComputedStyle(element).backgroundColor)
+	)
+	const [name, code] = (await cardLocator.allInnerTexts())[0].split(' \n\n')
 
 	return { name, code, hexCode }
 }
