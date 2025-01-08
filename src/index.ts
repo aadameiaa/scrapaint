@@ -1,13 +1,16 @@
 import retry from 'async-retry'
 
+import { IScrapper } from './lib/interfaces'
 import { launchBrowser } from './lib/playwright'
-import { scrapBirlaOpusColors } from './lib/scrapper'
+import { Jotun } from './models/jotun'
 
 const main = async () => {
 	console.log('🟢 Connecting to Scrapaint...')
 	const { browser, context, page } = await launchBrowser()
 
-	await scrapBirlaOpusColors(page)
+	const scrapper: IScrapper = new Jotun(page)
+
+	await scrapper.scrap()
 
 	console.log('🔴 Disconnecting from Scrapaint...\n')
 	await context.close()
