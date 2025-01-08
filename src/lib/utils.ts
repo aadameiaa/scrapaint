@@ -1,4 +1,6 @@
-export function backgroundColorStyleToHexCode(backgroundColor: string): string {
+export function convertBackgroundColorStyleToHexCode(
+	backgroundColor: string
+): string {
 	return backgroundColor
 		.replace('rgb(', '')
 		.replace(')', '')

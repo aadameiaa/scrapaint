@@ -3,6 +3,7 @@ import { Locator, Page } from 'playwright'
 import {
 	ASIAN_PAINTS_SCROLL_TIMEOUT,
 	ASIAN_PAINTS_URL,
+	BIRLA_OPUS_URL,
 	DULUX_URL,
 	JOTUN_SCROLL_TIMEOUT,
 	JOTUN_URL,
@@ -11,7 +12,7 @@ import {
 import { writeJSONFile } from './file'
 import { getUniqueColors } from './helpers'
 import { ColorData } from './types'
-import { backgroundColorStyleToHexCode } from './utils'
+import { convertBackgroundColorStyleToHexCode } from './utils'
 
 export async function scrapNipponPaintColors(page: Page) {
 	try {
@@ -45,6 +46,7 @@ export async function scrapNipponPaintColors(page: Page) {
 		writeJSONFile(getUniqueColors(colors), 'nippon-paint-colors.json')
 	} catch (error) {
 		console.log('🔴 Something bad happen:', error)
+		await page.close()
 
 		throw error
 	}
@@ -99,6 +101,7 @@ export async function scrapJotunColors(page: Page) {
 		writeJSONFile(getUniqueColors(colors), 'jotun-colors.json')
 	} catch (error) {
 		console.log('🔴 Something bad happen:', error)
+		await page.close()
 
 		throw error
 	}
@@ -131,7 +134,7 @@ async function parseJotunCardLocatorToColorData(
 			.locator('a[href^="/id-id/decorative/interior/colours/"]')
 			.allInnerTexts()) as string[]
 	)[0].split('\n')
-	const hexCode = backgroundColorStyleToHexCode(
+	const hexCode = convertBackgroundColorStyleToHexCode(
 		await cardLocator
 			.locator(
 				'a[href^="/id-id/decorative/interior/colours/"] > div:nth-of-type(1) > div:nth-of-type(1)'
@@ -174,6 +177,7 @@ export async function scrapDuluxColors(page: Page) {
 		writeJSONFile(getUniqueColors(colors), 'dulux-colors.json')
 	} catch (error) {
 		console.log('🔴 Something bad happen:', error)
+		await page.close()
 
 		throw error
 	}
@@ -212,6 +216,7 @@ export async function scrapAsianPaintsColors(page: Page) {
 		writeJSONFile(getUniqueColors(colors), 'asian-paints-colors.json')
 	} catch (error) {
 		console.log('🔴 Something bad happen:', error)
+		await page.close()
 
 		throw error
 	}
@@ -229,12 +234,88 @@ async function infiniteAsianPaintsColors(page: Page) {
 async function parseAsianPaintsCardLocatorToColorData(
 	cardLocator: Locator
 ): Promise<ColorData> {
-	const hexCode = backgroundColorStyleToHexCode(
+	const hexCode = convertBackgroundColorStyleToHexCode(
 		await cardLocator
 			.locator('div[class*="card"]')
 			.evaluate((element) => window.getComputedStyle(element).backgroundColor)
 	)
 	const [name, code] = (await cardLocator.allInnerTexts())[0].split(' \n\n')
+
+	return { name, code, hexCode }
+}
+
+export async function scrapBirlaOpusColors(page: Page) {
+	try {
+		console.log('🤝 Connected to Dulux website...')
+		await page.goto(BIRLA_OPUS_URL)
+
+		console.log('🪛 Scrapping website content...')
+		const colors: ColorData[] = []
+		const pageIds = await getBirlaOpusPageIds(page)
+		for (const pageId of pageIds) {
+			await page.goto(`${BIRLA_OPUS_URL}${pageId}`)
+
+			const colorsInPage = await getBirlaOpusColorsInPage(page, pageId)
+
+			colors.push(...colorsInPage)
+		}
+
+		console.log('📄 Write website content into file...')
+		writeJSONFile(getUniqueColors(colors), 'birla-opus-colors.json')
+	} catch (error) {
+		console.log('🔴 Something bad happen:', error)
+		await page.close()
+
+		throw error
+	}
+}
+
+async function getBirlaOpusPageIds(page: Page): Promise<string[]> {
+	const linkLocators = await page
+		.locator(
+			'div[class="colour-swatch-title"] > div[class="cta-wrap"] > a[class="colour-swatch-view-more"]'
+		)
+		.all()
+	const pageIds: string[] = []
+	for (const linkLocator of linkLocators) {
+		const pageId = ((await linkLocator.getAttribute('href')) as string).replace(
+			'/colour-catalogue',
+			''
+		)
+
+		pageIds.push(pageId)
+	}
+
+	return pageIds
+}
+
+async function getBirlaOpusColorsInPage(
+	page: Page,
+	pageId: string
+): Promise<ColorData[]> {
+	const colorsInPage: ColorData[] = []
+	const cardLocators = await page
+		.locator(`a[class="colour-swatch-card colour-popover"][href*="${pageId}"]`)
+		.all()
+	for (const cardLocator of cardLocators) {
+		const color = await parseBirlaOpusCardLocatorToColorData(cardLocator)
+
+		colorsInPage.push(color)
+	}
+
+	return colorsInPage
+}
+
+async function parseBirlaOpusCardLocatorToColorData(
+	cardLocator: Locator
+): Promise<ColorData> {
+	const name = (await cardLocator.getAttribute('data-colorname')) as string
+	const code = (await cardLocator.getAttribute('data-colorcode')) as string
+	const hexCode = convertBackgroundColorStyleToHexCode(
+		await cardLocator.evaluate(
+			(element) => window.getComputedStyle(element).backgroundColor
+		)
+	)
 
 	return { name, code, hexCode }
 }

@@ -9,3 +9,4 @@ export const JOTUN_URL =
 export const DULUX_URL = 'https://www.dulux.co.uk/en/colour-details'
 export const ASIAN_PAINTS_URL =
 	'https://www.asianpaints.co.id/ba/home/catalogue/colour-catalogue.html'
+export const BIRLA_OPUS_URL = 'https://www.birlaopus.com/colour-catalogue'
